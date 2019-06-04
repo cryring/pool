@@ -1,8 +1,8 @@
-# Archived project. No maintenance. 
+# Archived project. No maintenance.
 This project is not maintained anymore and is archived. Feel free to fork and
 use make your own changes if needed.
 
-Thanks all for their work on this project. 
+Thanks all for their work on this project.
 
 # Pool [![GoDoc](http://img.shields.io/badge/go-documentation-blue.svg?style=flat-square)](https://godoc.org/github.com/fatih/pool) [![Build Status](http://img.shields.io/travis/fatih/pool.svg?style=flat-square)](https://travis-ci.org/fatih/pool)
 
@@ -27,7 +27,7 @@ Please vendor the package with one of the releases: https://github.com/fatih/poo
 
 ```go
 // create a factory() to be used with channel based pool
-factory    := func() (net.Conn, error) { return net.Dial("tcp", "127.0.0.1:4000") }
+factory := func() (net.Conn, error) { return net.Dial("tcp", "127.0.0.1:4000") }
 
 // create a new channel based pool with an initial capacity of 5 and maximum
 // capacity of 30. The factory will create 5 initial connections and put it
@@ -45,7 +45,7 @@ conn.Close()
 
 // close the underlying connection instead of returning it to pool
 // it is useful when acceptor has already closed connection and conn.Write() returns error
-if pc, ok := conn.(*pool.PoolConn); ok {
+if pc, ok := conn.(*pool.Conn); ok {
   pc.MarkUnusable()
   pc.Close()
 }

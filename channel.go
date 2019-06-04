@@ -5,13 +5,14 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 )
 
 // channelPool implements the Pool interface based on buffered channels.
 type channelPool struct {
 	// storage for our net.Conn connections
 	mu    sync.RWMutex
-	conns chan net.Conn
+	conns chan *Conn
 
 	// net.Conn generator
 	factory Factory
@@ -32,7 +33,7 @@ func NewChannelPool(initialCap, maxCap int, factory Factory) (Pool, error) {
 	}
 
 	c := &channelPool{
-		conns:   make(chan net.Conn, maxCap),
+		conns:   make(chan *Conn, maxCap),
 		factory: factory,
 	}
 
@@ -44,13 +45,13 @@ func NewChannelPool(initialCap, maxCap int, factory Factory) (Pool, error) {
 			c.Close()
 			return nil, fmt.Errorf("factory is not able to fill the pool: %s", err)
 		}
-		c.conns <- conn
+		c.conns <- &Conn{c: c, Conn: conn}
 	}
 
 	return c, nil
 }
 
-func (c *channelPool) getConnsAndFactory() (chan net.Conn, Factory) {
+func (c *channelPool) getConnsAndFactory() (chan *Conn, Factory) {
 	c.mu.RLock()
 	conns := c.conns
 	factory := c.factory
@@ -69,21 +70,34 @@ func (c *channelPool) Get() (net.Conn, error) {
 
 	// wrap our connections with out custom net.Conn implementation (wrapConn
 	// method) that puts the connection back to the pool if it's closed.
-	select {
-	case conn := <-conns:
-		if conn == nil {
-			return nil, ErrClosed
+	for {
+		select {
+		case pc := <-conns:
+			if pc == nil {
+				return nil, ErrClosed
+			}
+			// If this connection has a ReadTimeout which we've been setting on
+			// reads, reset it to its default value before we attempt a non-blocking
+			// read, otherwise the scheduler will just time us out before we can read
+			err := pc.SetReadDeadline(time.Time{})
+			if err == nil {
+				err = pc.connCheck()
+			}
+			if err != nil {
+				// Closing bad idle connection
+				pc.Conn.Close()
+				continue
+			}
+			return pc, nil
+		default:
+			conn, err := factory()
+			if err != nil {
+				return nil, err
+			}
+			return &Conn{c: c, Conn: conn}, nil
 		}
-
-		return c.wrapConn(conn), nil
-	default:
-		conn, err := factory()
-		if err != nil {
-			return nil, err
-		}
-
-		return c.wrapConn(conn), nil
 	}
+
 }
 
 // put puts the connection back to the pool. If the pool is full or closed,
@@ -93,22 +107,27 @@ func (c *channelPool) put(conn net.Conn) error {
 		return errors.New("connection is nil. rejecting")
 	}
 
+	pc, ok := conn.(*Conn)
+	if !ok {
+		return errors.New("connection is not pool conn. rejecting")
+	}
+
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
 	if c.conns == nil {
 		// pool is closed, close passed connection
-		return conn.Close()
+		return pc.Conn.Close()
 	}
 
 	// put the resource back into the pool. If the pool is full, this will
 	// block and the default case will be executed.
 	select {
-	case c.conns <- conn:
+	case c.conns <- pc:
 		return nil
 	default:
 		// pool is full, close passed connection
-		return conn.Close()
+		return pc.Conn.Close()
 	}
 }
 

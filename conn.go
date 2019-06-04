@@ -1,21 +1,24 @@
 package pool
 
 import (
+	"errors"
+	"io"
 	"net"
 	"sync"
+	"syscall"
 )
 
-// PoolConn is a wrapper around net.Conn to modify the the behavior of
+// Conn is a wrapper around net.Conn to modify the the behavior of
 // net.Conn's Close() method.
-type PoolConn struct {
+type Conn struct {
 	net.Conn
 	mu       sync.RWMutex
 	c        *channelPool
 	unusable bool
 }
 
-// Close() puts the given connects back to the pool instead of closing it.
-func (p *PoolConn) Close() error {
+// Close puts the given connects back to the pool instead of closing it.
+func (p *Conn) Close() error {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
@@ -25,19 +28,45 @@ func (p *PoolConn) Close() error {
 		}
 		return nil
 	}
-	return p.c.put(p.Conn)
+	return p.c.put(p)
 }
 
-// MarkUnusable() marks the connection not usable any more, to let the pool close it instead of returning it to pool.
-func (p *PoolConn) MarkUnusable() {
+// MarkUnusable marks the connection not usable any more, to let the pool close it instead of returning it to pool.
+func (p *Conn) MarkUnusable() {
 	p.mu.Lock()
 	p.unusable = true
 	p.mu.Unlock()
 }
 
-// newConn wraps a standard net.Conn to a poolConn net.Conn.
-func (c *channelPool) wrapConn(conn net.Conn) net.Conn {
-	p := &PoolConn{c: c}
-	p.Conn = conn
-	return p
+func (p *Conn) connCheck() error {
+	var (
+		n    int
+		err  error
+		buff [1]byte
+	)
+
+	sconn, ok := p.Conn.(syscall.Conn)
+	if !ok {
+		return nil
+	}
+	rc, err := sconn.SyscallConn()
+	if err != nil {
+		return err
+	}
+	rerr := rc.Read(func(fd uintptr) bool {
+		n, err = syscall.Read(int(fd), buff[:])
+		return true
+	})
+	switch {
+	case rerr != nil:
+		return rerr
+	case n == 0 && err == nil:
+		return io.EOF
+	case n > 0:
+		return errors.New("unexpected read")
+	case err == syscall.EAGAIN || err == syscall.EWOULDBLOCK:
+		return nil
+	default:
+		return err
+	}
 }

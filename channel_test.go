@@ -13,7 +13,7 @@ var (
 	InitialCap = 5
 	MaximumCap = 30
 	network    = "tcp"
-	address    = "127.0.0.1:7777"
+	address    = "127.0.0.1:17777"
 	factory    = func() (net.Conn, error) { return net.Dial(network, address) }
 )
 
@@ -40,9 +40,9 @@ func TestPool_Get_Impl(t *testing.T) {
 		t.Errorf("Get error: %s", err)
 	}
 
-	_, ok := conn.(*PoolConn)
+	_, ok := conn.(*Conn)
 	if !ok {
-		t.Errorf("Conn is not of type poolConn")
+		t.Errorf("Conn is not of type Pool Conn")
 	}
 }
 
@@ -106,8 +106,7 @@ func TestPool_Put(t *testing.T) {
 	}
 
 	if p.Len() != MaximumCap {
-		t.Errorf("Put error len. Expecting %d, got %d",
-			1, p.Len())
+		t.Errorf("Put error len. Expecting %d, got %d", 1, p.Len())
 	}
 
 	conn, _ := p.Get()
@@ -135,14 +134,14 @@ func TestPool_PutUnusableConn(t *testing.T) {
 	}
 
 	conn, _ = p.Get()
-	if pc, ok := conn.(*PoolConn); !ok {
+	if pc, ok := conn.(*Conn); !ok {
 		t.Errorf("impossible")
 	} else {
 		pc.MarkUnusable()
 	}
 	conn.Close()
 	if p.Len() != poolSize-1 {
-		t.Errorf("Pool size is expected to be initial_size - 1", p.Len(), poolSize-1)
+		t.Errorf("Pool size (%d) is expected to be initial_size - 1 (%d)", p.Len(), poolSize-1)
 	}
 }
 
