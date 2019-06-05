@@ -102,14 +102,9 @@ func (c *channelPool) Get() (net.Conn, error) {
 
 // put puts the connection back to the pool. If the pool is full or closed,
 // conn is simply closed. A nil conn will be rejected.
-func (c *channelPool) put(conn net.Conn) error {
+func (c *channelPool) put(conn *Conn) error {
 	if conn == nil {
 		return errors.New("connection is nil. rejecting")
-	}
-
-	pc, ok := conn.(*Conn)
-	if !ok {
-		return errors.New("connection is not pool conn. rejecting")
 	}
 
 	c.mu.RLock()
@@ -117,17 +112,17 @@ func (c *channelPool) put(conn net.Conn) error {
 
 	if c.conns == nil {
 		// pool is closed, close passed connection
-		return pc.Conn.Close()
+		return conn.Conn.Close()
 	}
 
 	// put the resource back into the pool. If the pool is full, this will
 	// block and the default case will be executed.
 	select {
-	case c.conns <- pc:
+	case c.conns <- conn:
 		return nil
 	default:
 		// pool is full, close passed connection
-		return pc.Conn.Close()
+		return conn.Conn.Close()
 	}
 }
 

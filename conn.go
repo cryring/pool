@@ -12,15 +12,15 @@ import (
 // net.Conn's Close() method.
 type Conn struct {
 	net.Conn
-	mu       sync.RWMutex
+	mu       sync.Mutex
 	c        *channelPool
 	unusable bool
 }
 
 // Close puts the given connects back to the pool instead of closing it.
 func (p *Conn) Close() error {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
+	p.mu.Lock()
+	defer p.mu.Unlock()
 
 	if p.unusable {
 		if p.Conn != nil {
@@ -40,9 +40,8 @@ func (p *Conn) MarkUnusable() {
 
 func (p *Conn) connCheck() error {
 	var (
-		n    int
-		err  error
-		buff [1]byte
+		n   int
+		err error
 	)
 
 	sconn, ok := p.Conn.(syscall.Conn)
@@ -54,6 +53,7 @@ func (p *Conn) connCheck() error {
 		return err
 	}
 	rerr := rc.Read(func(fd uintptr) bool {
+		var buff [1]byte
 		n, err = syscall.Read(int(fd), buff[:])
 		return true
 	})
