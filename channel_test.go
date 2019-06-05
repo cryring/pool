@@ -266,6 +266,18 @@ func TestPoolConcurrent3(t *testing.T) {
 	wg.Wait()
 }
 
+func BenchmarkConnCheck(b *testing.B) {
+	p, _ := NewChannelPool(1, 1, factory)
+	conn, _ := p.Get()
+	pc, _ := conn.(*Conn)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		pc.connCheck()
+	}
+	p.Close()
+}
+
 func newChannelPool() (Pool, error) {
 	return NewChannelPool(InitialCap, MaximumCap, factory)
 }
